@@ -7,11 +7,11 @@ import json from '@eslint/json';
 import markdown from '@eslint/markdown';
 import storybook from 'eslint-plugin-storybook';
 import litA11y from 'eslint-plugin-lit-a11y';
+import importX from 'eslint-plugin-import-x';
 
 /** @type {import('eslint').Linter.Config[]} */
 export default [
   { languageOptions: { globals: globals.browser } },
-  eslintConfigPrettier,
   ...storybook.configs['flat/recommended'],
 
   // lint JSON files
@@ -20,9 +20,15 @@ export default [
     language: 'json/json',
     ...json.configs.recommended,
     rules: {
+      ...json.configs.recommended.rules,
       'json/no-duplicate-keys': 'error',
       'no-irregular-whitespace': 'off',
     },
+  },
+  {
+    // npm uses "" as the root-package key in the lockfile.
+    files: ['package-lock.json'],
+    rules: { 'json/no-empty-keys': 'off' },
   },
 
   // lint MD files
@@ -38,16 +44,51 @@ export default [
   ...tseslint.configs.recommended,
   {
     files: ['**/*.{js,mjs,cjs,ts}'],
-    ...lit['flat/recommended'],
     ...js.configs.recommended,
-    rules: {},
+  },
+  {
+    files: ['**/*.{js,mjs,cjs,ts}'],
+    ...lit['flat/recommended'],
+  },
+  {
+    files: ['**/*.{js,mjs,cjs,ts}'],
+    ...litA11y.configs.recommended,
   },
 
+  // Relative imports must carry their extension. The published ESM is loaded
+  // directly by browsers and Node, neither of which resolves extensionless
+  // paths, and tsc does not rewrite specifiers on emit.
   {
-    plugins: {
-      'lit-a11y': litA11y,
+    files: ['**/*.{js,mjs,cjs,ts}'],
+    plugins: { 'import-x': importX },
+    rules: {
+      'import-x/extensions': ['error', 'ignorePackages'],
     },
   },
+
+  // Build/tooling config runs in Node, not the browser.
+  {
+    files: [
+      '*.{js,mjs,cjs,ts}',
+      '.storybook/**/*.{js,mjs,cjs,ts}',
+      'plop-templates/**/*.{js,mjs,cjs,ts}',
+    ],
+    languageOptions: { globals: globals.node },
+  },
+
+  // Tests run under Mocha via @web/test-runner.
+  {
+    files: ['**/*.test.{js,ts}'],
+    languageOptions: { globals: globals.mocha },
+    rules: {
+      // Chai assertions such as `expect(x).to.be.true` are property accesses,
+      // which this rule reads as a statement that does nothing.
+      '@typescript-eslint/no-unused-expressions': 'off',
+    },
+  },
+
+  // Must stay last so it can turn off rules that conflict with Prettier.
+  eslintConfigPrettier,
 
   {
     ignores: [
